@@ -1,0 +1,63 @@
+# Clinical knowledge corpus. Files are downloaded by scripts/download_guidelines.py and are
+# not committed (publisher copyright). Metadata here flows into every chunk's payload and
+# into citations.
+#
+# source: who_handle -> resolved through the WHO IRIS (DSpace) REST API
+#         url        -> direct download
+
+- file: who-hypertension-pharmacological-2021.pdf
+  doc_id: who-htn-2021
+  title: WHO Guideline for the Pharmacological Treatment of Hypertension in Adults
+  publisher: World Health Organization
+  year: 2021
+  doc_type: guideline
+  conditions: [hypertension]
+  source: who_handle
+  handle: 10665/344424
+
+- file: who-hearts-d-type2-diabetes-2020.pdf
+  doc_id: who-hearts-d-2020
+  title: "WHO HEARTS-D: Diagnosis and Management of Type 2 Diabetes"
+  publisher: World Health Organization
+  year: 2020
+  doc_type: guideline
+  conditions: [diabetes]
+  source: who_handle
+  handle: 10665/331710
+
+- file: who-hearts-treatment-protocols-2018.pdf
+  doc_id: who-hearts-protocols-2018
+  title: "WHO HEARTS Technical Package: Evidence-based Treatment Protocols"
+  publisher: World Health Organization
+  year: 2018
+  doc_type: treatment_protocol
+  conditions: [hypertension, diabetes, cardiovascular]
+  source: who_handle
+  handle: 10665/260421
+
+- file: who-classification-diabetes-2019.pdf
+  doc_id: who-dm-classification-2019
+  title: WHO Classification of Diabetes Mellitus
+  publisher: World Health Organization
+  year: 2019
+  doc_type: guideline
+  conditions: [diabetes]
+  source: who_handle
+  handle: 10665/325182
+
+- file: kdigo-diabetes-ckd-2022.pdf
+  doc_id: kdigo-dm-ckd-2022
+  title: KDIGO 2022 Clinical Practice Guideline for Diabetes Management in CKD
+  publisher: KDIGO
+  year: 2022
+  doc_type: guideline
+  conditions: [diabetes, ckd]
+  source: url
+  url: https://kdigo.org/wp-content/uploads/2022/10/KDIGO-2022-Clinical-Practice-Guideline-for-Diabetes-Management-in-CKD.pdf
+
+- file: sample-care-pathway.docx
+  doc_id: sample-care-pathway
+  publisher: Synthetic (demo)
+  doc_type: care_pathway
+  conditions: [diabetes, ckd, hypertension]
+  source: generated  # scripts/make_sample_care_pathway.py

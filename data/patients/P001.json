@@ -1,0 +1,28 @@
+{
+  "patient_id": "P001",
+  "synthetic": true,
+  "demographics": {"age": 58, "sex": "male"},
+  "summary": "58-year-old man with type 2 diabetes for 9 years and stage 3b CKD, attending for routine review. Reports fatigue and nocturia. Adherence to medication is variable.",
+  "problems": ["Type 2 diabetes mellitus", "Chronic kidney disease stage 3b", "Hypertension", "Obesity (BMI 32)"],
+  "medications": [
+    {"name": "Metformin", "dose": "1000 mg", "frequency": "twice daily"},
+    {"name": "Gliclazide", "dose": "80 mg", "frequency": "twice daily"},
+    {"name": "Amlodipine", "dose": "5 mg", "frequency": "once daily"}
+  ],
+  "allergies": [{"substance": "Lisinopril", "reaction": "Angioedema"}],
+  "vitals": [
+    {"date": "2026-10-02", "bp_systolic": 152, "bp_diastolic": 94, "heart_rate": 82, "bmi": 32.1}
+  ],
+  "labs": [
+    {"date": "2026-04-10", "test": "HbA1c", "value": 8.6, "unit": "%"},
+    {"date": "2026-10-02", "test": "HbA1c", "value": 9.8, "unit": "%"},
+    {"date": "2026-04-10", "test": "eGFR", "value": 41, "unit": "ml/min/1.73m2"},
+    {"date": "2026-10-02", "test": "eGFR", "value": 34, "unit": "ml/min/1.73m2"},
+    {"date": "2026-10-02", "test": "UACR", "value": 64, "unit": "mg/mmol"},
+    {"date": "2026-10-02", "test": "Potassium", "value": 5.1, "unit": "mmol/L"},
+    {"date": "2026-10-02", "test": "LDL cholesterol", "value": 3.4, "unit": "mmol/L"}
+  ],
+  "notes": [
+    {"date": "2026-10-02", "author": "GP", "text": "HbA1c rising despite metformin and gliclazide. eGFR declining, now 34. Albuminuria present. BP above target on amlodipine alone. Previous ACE inhibitor stopped due to angioedema. Discussed need to intensify therapy."}
+  ]
+}

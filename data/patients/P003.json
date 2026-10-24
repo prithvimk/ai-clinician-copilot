@@ -1,0 +1,18 @@
+{
+  "patient_id": "P003",
+  "synthetic": true,
+  "demographics": {"age": 47, "sex": "female"},
+  "summary": "47-year-old woman, new finding of raised HbA1c on routine screening. Family history of type 2 diabetes. No symptoms.",
+  "problems": ["Raised HbA1c (new)", "Overweight (BMI 29)"],
+  "medications": [],
+  "allergies": [{"substance": "Penicillin", "reaction": "Rash"}],
+  "vitals": [{"date": "2026-10-12", "bp_systolic": 128, "bp_diastolic": 82, "heart_rate": 70, "bmi": 29.0}],
+  "labs": [
+    {"date": "2026-10-12", "test": "HbA1c", "value": 6.9, "unit": "%"},
+    {"date": "2026-10-12", "test": "Fasting plasma glucose", "value": 7.4, "unit": "mmol/L"},
+    {"date": "2026-10-12", "test": "eGFR", "value": 92, "unit": "ml/min/1.73m2"}
+  ],
+  "notes": [
+    {"date": "2026-10-12", "author": "GP", "text": "Screening bloods show HbA1c 6.9% and fasting glucose 7.4. Asymptomatic. Needs confirmation and counselling."}
+  ]
+}

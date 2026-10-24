@@ -1,0 +1,22 @@
+{
+  "patient_id": "P002",
+  "synthetic": true,
+  "demographics": {"age": 64, "sex": "female"},
+  "summary": "64-year-old woman with hypertension diagnosed 6 months ago, started on medication 5 weeks ago. Asymptomatic.",
+  "problems": ["Essential hypertension"],
+  "medications": [{"name": "Amlodipine", "dose": "5 mg", "frequency": "once daily"}],
+  "allergies": [],
+  "vitals": [
+    {"date": "2026-08-20", "bp_systolic": 168, "bp_diastolic": 98, "heart_rate": 76, "bmi": 27.4},
+    {"date": "2026-09-28", "bp_systolic": 154, "bp_diastolic": 92, "heart_rate": 74, "bmi": 27.2}
+  ],
+  "labs": [
+    {"date": "2026-08-20", "test": "eGFR", "value": 78, "unit": "ml/min/1.73m2"},
+    {"date": "2026-08-20", "test": "Potassium", "value": 4.2, "unit": "mmol/L"},
+    {"date": "2026-08-20", "test": "HbA1c", "value": 5.7, "unit": "%"},
+    {"date": "2026-08-20", "test": "Total cholesterol", "value": 5.6, "unit": "mmol/L"}
+  ],
+  "notes": [
+    {"date": "2026-09-28", "author": "Nurse", "text": "BP improved but remains above 140/90 on amlodipine 5 mg. No side effects. Home readings average 150/90."}
+  ]
+}
