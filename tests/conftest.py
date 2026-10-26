@@ -10,8 +10,7 @@ BODY = (
 )
 
 
-@pytest.fixture
-def sample_pdf(tmp_path: Path) -> Path:
+def make_sample_pdf(directory: Path) -> Path:
     """Three-page PDF: a cover, then headed sections in 16pt over 10pt body text."""
     pdf = pymupdf.open()
     cover = pdf.new_page()
@@ -29,13 +28,12 @@ def sample_pdf(tmp_path: Path) -> Path:
             y += 13
         page.insert_text((72, page.rect.height - 20), str(page_no), fontsize=9)
 
-    path = tmp_path / "guideline.pdf"
+    path = directory / "guideline.pdf"
     pdf.save(path)
     return path
 
 
-@pytest.fixture
-def sample_docx(tmp_path: Path) -> Path:
+def make_sample_docx(directory: Path) -> Path:
     document = docx.Document()
     document.add_heading("Care Pathway", level=0)
     document.add_heading("Diabetes", level=1)
@@ -46,6 +44,16 @@ def sample_docx(tmp_path: Path) -> Path:
     table = document.add_table(rows=2, cols=2)
     table.rows[0].cells[0].text, table.rows[0].cells[1].text = "eGFR", "Metformin"
     table.rows[1].cells[0].text, table.rows[1].cells[1].text = "<30", "Stop"
-    path = tmp_path / "pathway.docx"
+    path = directory / "pathway.docx"
     document.save(path)
     return path
+
+
+@pytest.fixture
+def sample_pdf(tmp_path: Path) -> Path:
+    return make_sample_pdf(tmp_path)
+
+
+@pytest.fixture
+def sample_docx(tmp_path: Path) -> Path:
+    return make_sample_docx(tmp_path)

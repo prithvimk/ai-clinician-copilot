@@ -7,7 +7,7 @@ from rich.table import Table
 from copilot.ingestion.indexer import ingest_path
 from copilot.rag.vector_store import get_vector_store
 
-app = typer.Typer(help="Clinical knowledge ingestion and search.", no_args_is_help=True)
+app = typer.Typer(help="Clinical knowledge ingestion, search and Q&A.", no_args_is_help=True)
 console = Console()
 
 
@@ -38,6 +38,27 @@ def search(
         console.rule(f"[{i}] {hit.chunk.citation()}  score={hit.score:.3f}")
         text = hit.chunk.text
         console.print(text[:600] + ("…" if len(text) > 600 else ""))
+
+
+@app.command()
+def chat() -> None:
+    """Interactive cited Q&A over the indexed guidelines (follow-ups use chat history)."""
+    from uuid import uuid4
+
+    from copilot.rag.chat import get_chat_service
+
+    service, thread_id = get_chat_service(), uuid4().hex
+    console.print("[dim]Ask a question (empty line to quit).[/]")
+    while question := console.input("[bold]> [/]").strip():
+        answer = service.ask(question, thread_id)
+        if answer.standalone_question != question:
+            console.print(f"[dim]searched: {answer.standalone_question}[/]")
+        console.print(answer.answer)
+        for c in answer.citations:
+            console.print(f"  [cyan][{c.id}][/] {c.label}  [dim]relevance={c.relevance:.2f}[/]")
+        if answer.refusal_reason:
+            console.print(f"[yellow]refused: {answer.refusal_reason}[/]")
+        console.print()
 
 
 @app.command()

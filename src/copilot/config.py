@@ -22,6 +22,18 @@ class Settings(BaseSettings):
     chunk_max_tokens: int = 600
     chunk_overlap_tokens: int = 100
 
+    rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+    retrieval_candidates: int = 20  # hybrid hits passed to the reranker
+    retrieval_top_k: int = 5  # reranked chunks given to the LLM
+    min_relevance: float = 0.2  # best rerank score (0-1) below this -> refuse, no LLM call
+
+    llm_model: str = "claude-opus-5-5"
+    answer_effort: str = "medium"
+    rewrite_effort: str = "low"
+    history_turns: int = 6  # messages of chat history used to rewrite follow-ups
+
+    postgres_url: str = ""  # chat memory checkpointer; empty -> in-process memory
+
 
 @lru_cache
 def get_settings() -> Settings:
