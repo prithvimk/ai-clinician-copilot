@@ -63,3 +63,16 @@ def test_refusal_raises():
     )
     with pytest.raises(LLMRefusal):
         llm.complete("sys", [{"role": "user", "content": "q"}], effort="low")
+
+
+def test_parse_sends_schema_and_validates_output():
+    from copilot.agents.workflow import Draft
+
+    payload = {"recommendations": [], "monitoring": [], "unsupported_findings": ["x"]}
+    llm, sent = make_llm(message([{"type": "text", "text": json.dumps(payload)}]))
+    draft = llm.parse("sys", [{"role": "user", "content": "q"}], Draft, effort="high")
+
+    assert draft == Draft.model_validate(payload)
+    config = sent[0]["output_config"]
+    assert config["effort"] == "high" and config["format"]["type"] == "json_schema"
+    assert "recommendations" in config["format"]["schema"]["properties"]

@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     answer_effort: str = "medium"
     rewrite_effort: str = "low"
     history_turns: int = 6  # messages of chat history used to rewrite follow-ups
+    reasoning_effort: str = "high"
+    llm_timeout_s: float = 300.0
+
+    evidence_per_finding: int = 3  # reranked chunks retrieved per patient finding
+    max_evidence: int = 15  # cap on distinct sources given to the reasoning step
+    max_revisions: int = 2  # validation -> retrieval/reasoning loops before human review
 
     postgres_url: str = ""  # chat memory checkpointer; empty -> in-process memory
 

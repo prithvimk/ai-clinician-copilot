@@ -59,7 +59,9 @@ class ChatService:
         return snapshot.values.get("history", [])
 
 
+@lru_cache
 def get_checkpointer() -> BaseCheckpointSaver:
+    """One shared checkpointer (and Postgres pool) for chat and analysis threads."""
     settings = get_settings()
     if not settings.postgres_url:
         return InMemorySaver()
