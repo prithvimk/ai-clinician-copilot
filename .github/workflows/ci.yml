@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Tests
+        run: uv run pytest -q
+      - name: Index the sample care pathway
+        run: |
+          uv run python scripts/make_sample_care_pathway.py
+          uv run python -m copilot.ingestion.cli ingest data/guidelines
+      - name: Evaluation gate
+        # Deterministic agent checks + retrieval ablation; LLM suites run where a key is set.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          suites=agent,retrieval
+          if [ -n "$ANTHROPIC_API_KEY" ]; then suites=$suites,generation; fi
+          uv run python eval/run_eval.py --suites "$suites" --gate eval/baseline.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-scorecard
+          path: eval/reports/

@@ -60,6 +60,28 @@ Safety thresholds follow the synthetic sample care pathway: they demonstrate the
 
 **Feedback** (`feedback.py`): `POST /feedback`, `GET /feedback`; clinician edits and rejections are recorded automatically with the original and edited plan, as JSONL for the learning loop.
 
+## Evaluation
+
+```bash
+uv run python eval/run_eval.py                                   # deterministic agent checks
+uv run python eval/run_eval.py --suites agent,retrieval,generation,agent_llm --judge
+uv run python eval/run_eval.py --suites agent,retrieval --gate eval/baseline.json  # CI gate
+uv run python eval/run_eval.py --propose "When should metformin be stopped?"       # annotate gold
+```
+
+Writes `eval/reports/scorecard.md` (+ `results.json`). Suites that need models, an index or an API key are skipped with the reason.
+
+| Suite | Measures | Needs |
+|---|---|---|
+| `agent` | finding precision/recall and severity, safety-rule and interaction accuracy on 7 patient scenarios (`eval/golden/agent.yaml`) | nothing |
+| `retrieval` | Recall@K, Precision@K, MRR, hit rate; ablation dense vs sparse (BM25) vs hybrid (RRF) vs hybrid + rerank | index + embedding models |
+| `generation` | answer/refuse decision accuracy, refusal recall, key-fact coverage, citation-ID validity, clinical-entity cross-check (numbers and drug names absent from the sources); with `--judge`: faithfulness, citation accuracy, groundedness, hallucination rate, answer relevance (claim-level Claude judge) | API key |
+| `agent_llm` | full workflow on each scenario: completion, validation pass rate, coverage of serious findings, first-pass rate | API key |
+
+The golden Q&A set (`eval/golden/qa.yaml`, 30 items incl. 8 that must be refused) matches gold evidence by `doc_id` + phrase, so it survives re-chunking; a test checks every gold phrase exists in the parsed sample pathway. It currently covers the synthetic sample care pathway; WHO/KDIGO items can be added once those PDFs are indexed. The generation metrics follow RAGAS definitions but use a Claude judge rather than the `ragas` package.
+
+`eval/baseline.json` holds the gated metrics; `--gate` fails on any drop beyond `--tolerance` (default 0.02) and reports baseline metrics a run did not measure. Update it with `--write-baseline` after an intentional change. CI (`.github/workflows/ci.yml`) runs lint, tests, indexes the sample pathway and runs the gate.
+
 ## Layout
 
 ```
@@ -72,11 +94,12 @@ src/copilot/
   guardrails/      PII pseudonymisation, scope and output checks
   ui/              Streamlit UI + API client
   feedback.py      clinician feedback store
+  evaluation/      golden-set loaders, metrics, LLM judge, suites, scorecard
   api/             FastAPI (/chat, /analyze, /patients, /feedback)
 data/
   guidelines/      source documents (downloaded, not committed)
   patients/        synthetic patient records (JSON)
-eval/              golden set + evaluation runner             (Phase 5)
+eval/              golden sets, baseline, run_eval.py (scorecard + regression gate)
 deploy/            docker-compose, k8s                         (Phase 6)
 docs/              architecture + plan
 tests/
