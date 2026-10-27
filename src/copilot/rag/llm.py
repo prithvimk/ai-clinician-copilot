@@ -94,4 +94,9 @@ def get_llm() -> LLM:
     client = anthropic.Anthropic(
         api_key=settings.anthropic_api_key or None, timeout=settings.llm_timeout_s
     )
-    return ClaudeLLM(settings.llm_model, client)
+    llm = ClaudeLLM(settings.llm_model, client)
+    if not settings.pii_redaction:
+        return llm
+    from copilot.guardrails.pii import RedactingLLM, get_detector
+
+    return RedactingLLM(llm, get_detector())

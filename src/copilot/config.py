@@ -40,6 +40,13 @@ class Settings(BaseSettings):
 
     postgres_url: str = ""  # chat memory checkpointer; empty -> in-process memory
 
+    pii_redaction: bool = True  # pseudonymise identifiers before every LLM call
+    pii_spacy_model: str = "en_core_web_lg"  # Presidio NER model; regex-only if not installed
+
+    feedback_path: Path = PROJECT_ROOT / "storage" / "feedback.jsonl"
+
+    mcp_server_command: str = ""  # e.g. "python -m copilot.mcp_server"; empty -> in-process
+
 
 @lru_cache
 def get_settings() -> Settings:

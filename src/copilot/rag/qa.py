@@ -12,11 +12,14 @@ from typing import Literal
 from pydantic import BaseModel
 
 from copilot.config import get_settings
+from copilot.guardrails.checks import DISCLAIMER, SCOPE_REFUSALS, check_scope, strip_uncited_dosing
 from copilot.rag.llm import LLM, LLMRefusal, get_llm
 from copilot.rag.retriever import Retriever, get_retriever
 from copilot.rag.vector_store import SearchHit
 
-RefusalReason = Literal["low_evidence", "insufficient_evidence", "uncited", "model_declined"]
+RefusalReason = Literal[
+    "out_of_scope", "low_evidence", "insufficient_evidence", "uncited", "model_declined"
+]
 
 INSUFFICIENT = "INSUFFICIENT_EVIDENCE"
 REFUSALS: dict[str, str] = {
@@ -75,6 +78,8 @@ class Answer(BaseModel):
     grounded: bool
     refusal_reason: RefusalReason | None = None
     invalid_citation_ids: list[int] = []
+    guardrail_flags: list[str] = []  # e.g. "prompt_injection", "uncited_dosing_removed:2"
+    disclaimer: str = DISCLAIMER
 
 
 def format_sources(hits: list[SearchHit]) -> str:
@@ -146,7 +151,7 @@ class CitedQA:
     def rewrite(self, history: list[dict], question: str) -> str:
         """Standalone version of `question` given prior turns; no LLM call on a first turn."""
         recent = history[-self.history_turns :] if self.history_turns else []
-        if not recent:
+        if not recent or check_scope(question):  # out-of-scope text is never sent to the LLM
             return question
         transcript = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in recent)
         prompt = (
@@ -166,19 +171,22 @@ class CitedQA:
 
     def answer(self, question: str, standalone_question: str | None = None) -> Answer:
         query = standalone_question or question
-        hits = self.retriever.retrieve(query)
 
-        def refuse(reason: RefusalReason, **extra) -> Answer:
+        def refuse(reason: RefusalReason, message: str | None = None, **extra) -> Answer:
             return Answer(
                 question=question,
                 standalone_question=query,
-                answer=REFUSALS[reason],
+                answer=message or REFUSALS[reason],
                 citations=[],
                 grounded=False,
                 refusal_reason=reason,
                 **extra,
             )
 
+        if scope := check_scope(question):
+            return refuse("out_of_scope", SCOPE_REFUSALS[scope], guardrail_flags=[scope])
+
+        hits = self.retriever.retrieve(query)
         if not hits or hits[0].score < self.min_relevance:
             return refuse("low_evidence")
 
@@ -193,9 +201,12 @@ class CitedQA:
         if raw.strip().strip(".") == INSUFFICIENT:
             return refuse("insufficient_evidence")
 
+        # Doses must be traceable to a source: uncited dosing sentences are removed first.
+        raw, removed = strip_uncited_dosing(raw)
+        flags = [f"uncited_dosing_removed:{removed}"] if removed else []
         text, valid, invalid = validate_citations(raw, len(hits))
         if not valid:
-            return refuse("uncited", invalid_citation_ids=invalid)
+            return refuse("uncited", invalid_citation_ids=invalid, guardrail_flags=flags)
 
         return Answer(
             question=question,
@@ -204,6 +215,7 @@ class CitedQA:
             citations=[_citation(n, hits[n - 1]) for n in sorted(valid)],
             grounded=True,
             invalid_citation_ids=invalid,
+            guardrail_flags=flags,
         )
 
 

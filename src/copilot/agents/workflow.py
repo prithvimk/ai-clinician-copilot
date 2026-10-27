@@ -12,6 +12,7 @@ Every step is checkpointed per thread_id, so a failed run resumes from its last 
 """
 
 import operator
+from collections.abc import Callable
 from typing import Annotated, Literal, TypedDict
 
 import anthropic
@@ -20,16 +21,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import RetryPolicy, interrupt
 from pydantic import BaseModel
 
+from copilot.agents.interactions import Interaction, check_interactions
 from copilot.agents.patient import Patient
 from copilot.agents.rules import Finding, analyse_patient
 from copilot.agents.safety import Change, check_medication
+from copilot.guardrails.checks import DISCLAIMER
 from copilot.rag.llm import LLM, LLMOutputError
 from copilot.rag.retriever import Retriever
 
-DISCLAIMER = (
-    "Decision support only: generated from guideline excerpts and rule-based checks for "
-    "clinician review. Not a substitute for clinical judgement."
-)
 PRIORITY_ORDER = {"urgent": 0, "soon": 1, "routine": 2}
 
 # --- LLM output schema (all fields required: constrained decoding fills every one) ----
@@ -76,7 +75,7 @@ class Evidence(BaseModel):
 
 
 class ValidationIssue(BaseModel):
-    kind: Literal["citation", "safety", "coverage"]
+    kind: Literal["citation", "safety", "interaction", "coverage"]
     message: str
     finding_id: str | None = None
     recommendation: int | None = None  # 0-based index into draft.recommendations
@@ -172,8 +171,31 @@ def reasoning_prompt(
 # --- validation (pure, also re-run on clinician edits) ---------------------------------
 
 
+InteractionChecker = Callable[[list[str]], list[Interaction]]
+
+
+def regimen_after(patient: Patient, draft: Draft) -> tuple[list[str], set[str]]:
+    """(medication list after the draft's changes, lower-cased names the draft starts)."""
+    meds = {m.name.lower(): m.name for m in patient.medications}
+    started: set[str] = set()
+    for rec in draft.recommendations:
+        for mc in rec.medication_changes:
+            key = mc.drug.lower()
+            if mc.change == "stop":
+                meds.pop(key, None)
+            else:
+                meds.setdefault(key, mc.drug)
+                if mc.change == "start":
+                    started.add(key)
+    return list(meds.values()), started
+
+
 def validate_draft(
-    draft: Draft, patient: Patient, findings: list[Finding], evidence: list[Evidence]
+    draft: Draft,
+    patient: Patient,
+    findings: list[Finding],
+    evidence: list[Evidence],
+    check: InteractionChecker = check_interactions,
 ) -> list[ValidationIssue]:
     ids = {e.id for e in evidence}
     issues: list[ValidationIssue] = []
@@ -217,6 +239,17 @@ def validate_draft(
                 )
             )
 
+    # Interactions the plan introduces (pairs involving a newly started drug).
+    regimen, started = regimen_after(patient, draft)
+    if started and len(regimen) > 1:
+        for x in check(regimen):
+            if x.severity in ("critical", "high") and started & {d.lower() for d in x.drugs}:
+                issues.append(
+                    ValidationIssue(
+                        kind="interaction", message=f"{x.drugs[0]} + {x.drugs[1]}: {x.message}"
+                    )
+                )
+
     addressed = {fid for rec in draft.recommendations for fid in rec.finding_ids}
     addressed |= set(draft.unsupported_findings)
     for f in findings:
@@ -255,6 +288,7 @@ class AnalysisWorkflow:
         max_evidence: int = 15,
         max_revisions: int = 2,
         reasoning_effort: str = "high",
+        interaction_checker: InteractionChecker = check_interactions,
     ):
         self.retriever = retriever
         self.llm = llm
@@ -263,6 +297,7 @@ class AnalysisWorkflow:
         self.max_evidence = max_evidence
         self.max_revisions = max_revisions
         self.reasoning_effort = reasoning_effort
+        self.interaction_checker = interaction_checker
 
         g = StateGraph(AnalysisState)
         g.add_node("analyze", self.analyze)
@@ -378,6 +413,7 @@ class AnalysisWorkflow:
             Patient.model_validate(state["patient"]),
             [Finding.model_validate(f) for f in state["findings"]],
             [Evidence.model_validate(e) for e in state["evidence"]],
+            self.interaction_checker,
         )
         revisions = state.get("revisions", 0) + (1 if issues else 0)
         summary = "passed" if not issues else "; ".join(i.message for i in issues)
@@ -419,6 +455,7 @@ class AnalysisWorkflow:
                 Patient.model_validate(state["patient"]),
                 [Finding.model_validate(f) for f in state["findings"]],
                 [Evidence.model_validate(e) for e in state["evidence"]],
+                self.interaction_checker,
             )
             update |= {"draft": draft.model_dump(), "issues": [i.model_dump() for i in issues]}
         return update

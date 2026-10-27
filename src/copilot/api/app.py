@@ -7,7 +7,7 @@ import anthropic
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from copilot.agents.patient import Patient, load_patient
+from copilot.agents.patient import PATIENTS_DIR, Patient
 from copilot.agents.service import (
     AnalysisService,
     AnalysisStatus,
@@ -15,11 +15,13 @@ from copilot.agents.service import (
     get_analysis_service,
 )
 from copilot.agents.workflow import ReviewDecision
+from copilot.feedback import Feedback, FeedbackIn, FeedbackStore, get_feedback_store
 from copilot.rag.chat import ChatService, get_chat_service
 from copilot.rag.qa import Answer
 
 Service = Annotated[ChatService, Depends(get_chat_service)]
 Analysis = Annotated[AnalysisService, Depends(get_analysis_service)]
+Store = Annotated[FeedbackStore, Depends(get_feedback_store)]
 
 app = FastAPI(
     title="AI Clinician Copilot",
@@ -61,6 +63,15 @@ class AnalyzeRequest(BaseModel):
     patient: Patient | None = Field(None, description="Inline record; overrides patient_id")
 
 
+@app.get("/patients")
+def patients() -> list[dict]:
+    """Synthetic patient records available for analysis."""
+    records = (
+        Patient.model_validate_json(f.read_text()) for f in sorted(PATIENTS_DIR.glob("*.json"))
+    )
+    return [{"patient_id": p.patient_id, "summary": p.summary} for p in records]
+
+
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest, service: Analysis) -> AnalysisStatus:
     """Run the analysis until it pauses for clinician review (or fails)."""
@@ -68,7 +79,7 @@ def analyze(req: AnalyzeRequest, service: Analysis) -> AnalysisStatus:
         patient = req.patient
     elif req.patient_id:
         try:
-            patient = load_patient(req.patient_id)
+            patient = service.load_patient(req.patient_id)
         except KeyError:
             raise HTTPException(404, f"Unknown patient {req.patient_id}") from None
     else:
@@ -85,12 +96,36 @@ def analysis_status(thread_id: str, service: Analysis) -> AnalysisStatus:
 
 
 @app.post("/analyze/{thread_id}/review")
-def review(thread_id: str, decision: ReviewDecision, service: Analysis) -> AnalysisStatus:
-    """Approve, edit or reject the paused draft; resumes the workflow to the final report."""
+def review(
+    thread_id: str, decision: ReviewDecision, service: Analysis, store: Store
+) -> AnalysisStatus:
+    """Approve, edit or reject the paused draft; resumes the workflow to the final report.
+
+    Edits and rejections are also recorded as feedback (original vs. clinician version).
+    """
+    pending = service.status(thread_id)
     try:
-        return service.review(thread_id, decision)
+        result = service.review(thread_id, decision)
     except ReviewNotPending:
         raise HTTPException(409, f"Analysis {thread_id} is not awaiting review") from None
+    if decision.decision != "approve":
+        store.add(
+            FeedbackIn(
+                kind="analysis",
+                thread_id=thread_id,
+                rating="down" if decision.decision == "reject" else None,
+                comment=decision.comment,
+                payload={
+                    "decision": decision.decision,
+                    "original_draft": (pending.review_request or {}).get("draft"),
+                    "edited_recommendations": [r.model_dump() for r in decision.recommendations]
+                    if decision.recommendations is not None
+                    else None,
+                },
+            ),
+            source="review",
+        )
+    return result
 
 
 @app.post("/analyze/{thread_id}/resume")
@@ -100,3 +135,13 @@ def resume(thread_id: str, service: Analysis) -> AnalysisStatus:
     if status.status != "failed":
         raise HTTPException(409, f"Analysis {thread_id} is {status.status}, not failed")
     return service.resume(thread_id)
+
+
+@app.post("/feedback")
+def add_feedback(item: FeedbackIn, store: Store) -> Feedback:
+    return store.add(item)
+
+
+@app.get("/feedback")
+def list_feedback(store: Store, kind: str | None = None, limit: int = 100) -> list[Feedback]:
+    return store.list(kind, limit)
