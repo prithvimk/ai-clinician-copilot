@@ -1,0 +1,25 @@
+# Only the UI is exposed; the API stays cluster-internal. Streamlit keeps a websocket per
+# session, so the ingress pins each browser to one UI pod with a cookie.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ui
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/affinity: cookie
+    nginx.ingress.kubernetes.io/session-cookie-name: copilot-ui
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [copilot.example.org]
+      secretName: copilot-ui-tls
+  rules:
+    - host: copilot.example.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: ui, port: {name: http}}

@@ -82,6 +82,22 @@ The golden Q&A set (`eval/golden/qa.yaml`, 30 items incl. 8 that must be refused
 
 `eval/baseline.json` holds the gated metrics; `--gate` fails on any drop beyond `--tolerance` (default 0.02) and reports baseline metrics a run did not measure. Update it with `--write-baseline` after an intentional change. CI (`.github/workflows/ci.yml`) runs lint, tests, indexes the sample pathway and runs the gate.
 
+## Deployment and observability
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d --build                 # api, ui, qdrant, postgres, jaeger
+docker compose -f deploy/docker-compose.yml --profile tools run --rm ingest
+kubectl apply -k deploy/k8s/overlays/prod                                 # Kubernetes
+```
+
+- **Tracing:** OpenTelemetry spans for every workflow node, retrieval, QA and LLM call (tokens, estimated cost, thread id as session) → Langfuse (set `LANGFUSE_*`) or any OTLP collector (`OTEL_EXPORTER_OTLP_ENDPOINT`; Jaeger in compose at http://localhost:16686).
+- **Metrics:** Prometheus at `/metrics` (requests, latency, node latency, tokens, cost, refusal outcomes, guardrail flags) with alert rules.
+- **Logs:** JSON lines with request id, thread id and trace/span ids; `/health` (liveness) and `/ready` (models loaded, Qdrant reachable).
+- **Kubernetes** (`deploy/k8s`, Kustomize base + prod overlay): API Deployment with HPA and PDB, UI with cookie affinity, Qdrant StatefulSet, Postgres via CloudNativePG (3 instances, WAL archiving for PITR), ingest Job, snapshot CronJob, default-deny NetworkPolicies, restricted Pod Security, ServiceMonitor and alerts.
+- Postgres holds conversation/analysis threads and feedback whenever `POSTGRES_URL` is set, so API replicas are stateless.
+
+See [docs/operations.md](docs/operations.md) for the observability reference, security posture, and disaster recovery (RPO/RTO, PITR restore, snapshots, re-ingest).
+
 ## Layout
 
 ```
@@ -95,12 +111,13 @@ src/copilot/
   ui/              Streamlit UI + API client
   feedback.py      clinician feedback store
   evaluation/      golden-set loaders, metrics, LLM judge, suites, scorecard
+  observability/   tracing (OTel/Langfuse), Prometheus metrics, JSON logs
   api/             FastAPI (/chat, /analyze, /patients, /feedback)
 data/
   guidelines/      source documents (downloaded, not committed)
   patients/        synthetic patient records (JSON)
 eval/              golden sets, baseline, run_eval.py (scorecard + regression gate)
-deploy/            docker-compose, k8s                         (Phase 6)
+deploy/            Dockerfile, docker-compose, Kubernetes (Kustomize)
 docs/              architecture + plan
 tests/
 ```

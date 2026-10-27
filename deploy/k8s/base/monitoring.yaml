@@ -1,0 +1,46 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api
+  labels: {release: kube-prometheus-stack}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: api}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: copilot
+  labels: {release: kube-prometheus-stack}
+spec:
+  groups:
+    - name: clinician-copilot
+      rules:
+        - alert: CopilotHighErrorRate
+          expr: |
+            sum(rate(copilot_http_requests_total{status=~"5.."}[5m]))
+              / clamp_min(sum(rate(copilot_http_requests_total[5m])), 1e-9) > 0.05
+          for: 10m
+          labels: {severity: page}
+          annotations: {summary: "More than 5% of API requests are failing"}
+        - alert: CopilotSlowAnalysis
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(copilot_http_request_seconds_bucket{route="/analyze"}[15m]))) > 120
+          for: 15m
+          labels: {severity: ticket}
+          annotations: {summary: "p95 patient analysis latency above 2 minutes"}
+        - alert: CopilotRefusalSpike
+          expr: |
+            sum(rate(copilot_answers_total{outcome!="grounded"}[30m]))
+              / clamp_min(sum(rate(copilot_answers_total[30m])), 1e-9) > 0.5
+          for: 30m
+          labels: {severity: ticket}
+          annotations: {summary: "Over half of questions refused: index or retrieval problem?"}
+        - alert: CopilotLLMSpend
+          expr: sum(increase(copilot_llm_cost_usd_total[1h])) > 50
+          labels: {severity: ticket}
+          annotations: {summary: "Estimated LLM spend above $50/hour"}

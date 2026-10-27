@@ -26,6 +26,7 @@ from copilot.agents.patient import Patient
 from copilot.agents.rules import Finding, analyse_patient
 from copilot.agents.safety import Change, check_medication
 from copilot.guardrails.checks import DISCLAIMER
+from copilot.observability.telemetry import traced_node
 from copilot.rag.llm import LLM, LLMOutputError
 from copilot.rag.retriever import Retriever
 
@@ -300,12 +301,16 @@ class AnalysisWorkflow:
         self.interaction_checker = interaction_checker
 
         g = StateGraph(AnalysisState)
-        g.add_node("analyze", self.analyze)
-        g.add_node("retrieve", self.retrieve, retry_policy=RetryPolicy(max_attempts=3))
-        g.add_node("reason", self.reason, retry_policy=LLM_RETRY)
-        g.add_node("validate", self.validate)
-        g.add_node("human_review", self.human_review)
-        g.add_node("recommend", self.recommend)
+
+        def node(name, fn, **kw):
+            g.add_node(name, traced_node("analysis", name, fn), **kw)
+
+        node("analyze", self.analyze)
+        node("retrieve", self.retrieve, retry_policy=RetryPolicy(max_attempts=3))
+        node("reason", self.reason, retry_policy=LLM_RETRY)
+        node("validate", self.validate)
+        node("human_review", self.human_review)
+        node("recommend", self.recommend)
         g.add_edge(START, "analyze")
         g.add_edge("analyze", "retrieve")
         g.add_edge("retrieve", "reason")

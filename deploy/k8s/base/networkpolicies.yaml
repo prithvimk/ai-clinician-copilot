@@ -1,0 +1,115 @@
+# Default deny, then allow only the paths the system uses.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-dns}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: ui}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: ui}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}
+      ports: [{protocol: TCP, port: 8501}]
+  egress:
+    - to:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: api}}
+      ports: [{protocol: TCP, port: 8000}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: api}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: api}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: ui}}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}
+      ports: [{protocol: TCP, port: 8000}]
+  egress:
+    - to:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: qdrant}}
+      ports: [{protocol: TCP, port: 6333}]
+    - to:
+        - podSelector: {matchLabels: {cnpg.io/cluster: copilot-db}}
+      ports: [{protocol: TCP, port: 5432}]
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}
+      ports: [{protocol: TCP, port: 4318}]
+    - to:  # Anthropic API and (optional) Langfuse cloud over HTTPS; no private ranges
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports: [{protocol: TCP, port: 443}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: qdrant}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: qdrant}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: api}}
+        - podSelector: {matchLabels: {app.kubernetes.io/component: job}}
+      ports: [{protocol: TCP, port: 6333}]
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: postgres}
+spec:
+  podSelector: {matchLabels: {cnpg.io/cluster: copilot-db}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: api}}
+        - podSelector: {matchLabels: {cnpg.io/cluster: copilot-db}}  # replication
+      ports: [{protocol: TCP, port: 5432}]
+    - from:  # CloudNativePG operator: instance manager status + management
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: cnpg-system}}
+      ports: [{protocol: TCP, port: 8000}, {protocol: TCP, port: 5432}]
+  egress:
+    - to:
+        - podSelector: {matchLabels: {cnpg.io/cluster: copilot-db}}
+      ports: [{protocol: TCP, port: 5432}]
+    - to:  # kube-apiserver (instance manager) and object storage (WAL archive)
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 6443}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: jobs}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/component: job}}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: qdrant}}
+      ports: [{protocol: TCP, port: 6333}]
+    - to:  # guideline downloads (WHO IRIS, KDIGO)
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports: [{protocol: TCP, port: 443}]

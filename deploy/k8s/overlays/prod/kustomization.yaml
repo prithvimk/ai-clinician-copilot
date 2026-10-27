@@ -1,0 +1,25 @@
+# Production overlay: pinned image digest/tag, more API capacity, larger volumes, real host.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/prithvimk/clinician-copilot
+    newTag: "0.1.0"
+patches:
+  - target: {kind: Deployment, name: api}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 3}
+  - target: {kind: HorizontalPodAutoscaler, name: api}
+    patch: |-
+      - {op: replace, path: /spec/minReplicas, value: 3}
+      - {op: replace, path: /spec/maxReplicas, value: 20}
+  - target: {kind: PodDisruptionBudget, name: api}
+    patch: |-
+      - {op: replace, path: /spec/minAvailable, value: 2}
+  - target: {kind: StatefulSet, name: qdrant}
+    patch: |-
+      - {op: replace, path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage, value: 100Gi}
+  - target: {kind: Cluster, name: copilot-db}
+    patch: |-
+      - {op: replace, path: /spec/storage/size, value: 100Gi}

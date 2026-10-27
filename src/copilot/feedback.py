@@ -1,7 +1,8 @@
 """Clinician feedback for the learning loop: ratings, corrections and review edits.
 
-Stored as append-only JSONL (one record per line) so it can feed evaluation sets and prompt
-or rule updates later; swap for a database table behind the same two methods in production.
+Postgres table when POSTGRES_URL is set (shared by all API replicas); otherwise append-only
+JSONL for local runs. Both expose add() / list() and feed evaluation sets and prompt or rule
+updates later.
 """
 
 import datetime as dt
@@ -56,6 +57,62 @@ class FeedbackStore:
         return records[-limit:][::-1]  # newest first
 
 
+class PostgresFeedbackStore:
+    DDL = """
+        CREATE TABLE IF NOT EXISTS copilot_feedback (
+            id text PRIMARY KEY,
+            created_at timestamptz NOT NULL,
+            kind text NOT NULL,
+            source text NOT NULL,
+            thread_id text NOT NULL,
+            record jsonb NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS copilot_feedback_kind_created
+            ON copilot_feedback (kind, created_at DESC);
+    """
+
+    def __init__(self, url: str):
+        from psycopg_pool import ConnectionPool
+
+        self.pool = ConnectionPool(
+            url, kwargs={"autocommit": True}, min_size=1, max_size=4, open=True
+        )
+        with self.pool.connection() as conn:
+            conn.execute(self.DDL)
+
+    def add(self, item: FeedbackIn, source: Literal["user", "review"] = "user") -> Feedback:
+        record = Feedback(**item.model_dump(), source=source)
+        with self.pool.connection() as conn:
+            conn.execute(
+                "INSERT INTO copilot_feedback (id, created_at, kind, source, thread_id, record)"
+                " VALUES (%s, %s, %s, %s, %s, %s::jsonb)",
+                (
+                    record.id,
+                    record.created_at,
+                    record.kind,
+                    record.source,
+                    record.thread_id,
+                    record.model_dump_json(),
+                ),
+            )
+        return record
+
+    def list(self, kind: str | None = None, limit: int = 100) -> list[Feedback]:
+        query = "SELECT record FROM copilot_feedback"
+        params: list = []
+        if kind:
+            query += " WHERE kind = %s"
+            params.append(kind)
+        query += " ORDER BY created_at DESC LIMIT %s"
+        params.append(limit)
+        with self.pool.connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [Feedback.model_validate(row[0]) for row in rows]
+
+
 @lru_cache
-def get_feedback_store() -> FeedbackStore:
-    return FeedbackStore(get_settings().feedback_path)
+def get_feedback_store() -> FeedbackStore | PostgresFeedbackStore:
+    settings = get_settings()
+    if settings.postgres_url:
+        return PostgresFeedbackStore(settings.postgres_url)
+    return FeedbackStore(settings.feedback_path)

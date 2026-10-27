@@ -1,0 +1,41 @@
+# Postgres via CloudNativePG: 3 instances (primary + 2 streaming replicas, automatic
+# failover), continuous WAL archiving + daily base backups to object storage for
+# point-in-time recovery. Holds LangGraph checkpoints (chat + analysis threads) and feedback.
+# The operator creates secret `copilot-db-app` (key `uri`) for the application user.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: copilot-db
+spec:
+  instances: 3
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: 20Gi
+  bootstrap:
+    initdb:
+      database: copilot
+      owner: copilot
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
+  backup:
+    retentionPolicy: 30d
+    barmanObjectStore:
+      destinationPath: s3://clinician-copilot-backups/postgres
+      s3Credentials:
+        accessKeyId: {name: backup-s3, key: ACCESS_KEY_ID}
+        secretAccessKey: {name: backup-s3, key: SECRET_ACCESS_KEY}
+      wal:
+        compression: gzip
+      data:
+        compression: gzip
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: copilot-db-daily
+spec:
+  schedule: "0 0 2 * * *"  # 02:00 daily (CNPG cron has a seconds field)
+  backupOwnerReference: self
+  cluster:
+    name: copilot-db

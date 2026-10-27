@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+  labels: {app.kubernetes.io/name: ui, app.kubernetes.io/component: frontend}
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: {app.kubernetes.io/name: ui}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: ui, app.kubernetes.io/component: frontend}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: ui
+          image: clinician-copilot
+          args: ["streamlit", "run", "src/copilot/ui/app.py", "--server.port=8501",
+                 "--server.address=0.0.0.0", "--server.headless=true"]
+          ports:
+            - {name: http, containerPort: 8501}
+          env:
+            - {name: COPILOT_API_URL, value: "http://api:8000"}
+            - {name: HOME, value: /tmp}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          readinessProbe:
+            httpGet: {path: /_stcore/health, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /_stcore/health, port: http}
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  labels: {app.kubernetes.io/name: ui}
+spec:
+  selector: {app.kubernetes.io/name: ui}
+  ports:
+    - {name: http, port: 8501, targetPort: http}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ui
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: ui}

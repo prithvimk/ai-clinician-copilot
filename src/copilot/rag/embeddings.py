@@ -13,9 +13,9 @@ from copilot.config import get_settings
 
 
 class Embedder:
-    def __init__(self, dense_model: str, sparse_model: str):
-        self.dense = TextEmbedding(dense_model)
-        self.sparse = SparseTextEmbedding(sparse_model)
+    def __init__(self, dense_model: str, sparse_model: str, cache_dir: str | None = None):
+        self.dense = TextEmbedding(dense_model, cache_dir=cache_dir)
+        self.sparse = SparseTextEmbedding(sparse_model, cache_dir=cache_dir)
         self.dense_dim = len(next(iter(self.dense.embed(["dimension probe"]))))
 
     def embed_documents(
@@ -37,4 +37,5 @@ class Embedder:
 @lru_cache
 def get_embedder() -> Embedder:
     settings = get_settings()
-    return Embedder(settings.dense_model, settings.sparse_model)
+    cache = str(settings.model_cache_dir) if settings.model_cache_dir else None
+    return Embedder(settings.dense_model, settings.sparse_model, cache)
