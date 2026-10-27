@@ -4,7 +4,7 @@ RAG + agentic clinical decision support: ingests clinical guidelines (PDF/DOCX),
 
 > **Decision support only.** Outputs are not a substitute for clinical judgement. All patient data in this repo is synthetic.
 
-See [docs/implementation-plan.md](docs/implementation-plan.md) for the phased build plan.
+See [docs/implementation-plan.md](docs/implementation-plan.md) for the phased build plan, [docs/architecture.md](docs/architecture.md) for the architecture, [docs/deployment.md](docs/deployment.md) for the production diagram and [docs/demo.md](docs/demo.md) for the demo script.
 
 ## Quickstart
 
