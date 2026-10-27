@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: copilot-config
+data:
+  QDRANT_URL: http://qdrant:6333
+  QDRANT_COLLECTION: clinical_guidelines
+  LOG_FORMAT: json
+  LOG_LEVEL: INFO
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc:4318
+  LANGFUSE_HOST: https://cloud.langfuse.com
+  HF_HUB_OFFLINE: "1"  # models are baked into the image
+  PII_REDACTION: "true"
+  MIN_RELEVANCE: "0.2"
+  LLM_MODEL: claude-opus-5-5

@@ -1,0 +1,99 @@
+# Index (re)build from the versioned corpus manifest, and Qdrant snapshots.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ingest-guidelines
+  labels: {app.kubernetes.io/name: ingest, app.kubernetes.io/component: job}
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: ingest, app.kubernetes.io/component: job}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: ingest
+          image: clinician-copilot
+          command: ["sh", "-c"]
+          args:
+            - >-
+              python scripts/make_sample_care_pathway.py &&
+              (python scripts/download_guidelines.py || echo "some downloads failed") &&
+              python -m copilot.ingestion.cli ingest data/guidelines
+          envFrom:
+            - configMapRef: {name: copilot-config}
+          resources:
+            requests: {cpu: 500m, memory: 1536Mi}
+            limits: {cpu: "2", memory: 3Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: guidelines, mountPath: /app/data/guidelines}
+      initContainers:
+        - name: corpus-manifest  # the emptyDir hides the baked sources.yaml; copy it in
+          image: clinician-copilot
+          command: ["cp", "/app/data/guidelines/sources.yaml", "/work/sources.yaml"]
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: guidelines, mountPath: /work}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - {name: guidelines, emptyDir: {}}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: qdrant-snapshot
+  labels: {app.kubernetes.io/name: qdrant-snapshot, app.kubernetes.io/component: job}
+spec:
+  schedule: "30 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {app.kubernetes.io/name: qdrant-snapshot, app.kubernetes.io/component: job}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: snapshot
+              image: clinician-copilot
+              args: ["python", "scripts/qdrant_snapshot.py", "--keep", "7"]
+              envFrom:
+                - configMapRef: {name: copilot-config}
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {cpu: 500m, memory: 512Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - {name: tmp, emptyDir: {}}

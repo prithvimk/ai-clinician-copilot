@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+.env
+.env.*
+storage
+eval/reports
+data/guidelines/*.pdf
+data/guidelines/*.docx
+tests
+docs
+deploy/k8s

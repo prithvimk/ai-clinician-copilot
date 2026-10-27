@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     qdrant_path: Path = PROJECT_ROOT / "storage" / "qdrant"
     qdrant_collection: str = "clinical_guidelines"
 
+    model_cache_dir: Path | None = None  # fastembed model cache (bake into images for offline)
+
     dense_model: str = "BAAI/bge-small-en-v1.5"
     sparse_model: str = "Qdrant/bm25"
 
@@ -45,7 +47,15 @@ class Settings(BaseSettings):
 
     feedback_path: Path = PROJECT_ROOT / "storage" / "feedback.jsonl"
 
-    mcp_server_command: str = ""  # e.g. "python -m copilot.mcp_server"; empty -> in-process
+    mcp_server_command: str = ""
+
+    service_name: str = "clinician-copilot"
+    log_level: str = "INFO"
+    log_format: str = "json"  # json | text
+    otel_exporter_otlp_endpoint: str = ""  # e.g. http://jaeger:4318 (OTLP/HTTP base URL)
+    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_public_key: str = ""  # with the secret key, traces go to Langfuse over OTLP
+    langfuse_secret_key: str = ""  # e.g. "python -m copilot.mcp_server"; empty -> in-process
 
 
 @lru_cache

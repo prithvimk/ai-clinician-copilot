@@ -1,5 +1,6 @@
 """Thin LLM interface so QA and agents can be tested with a scripted fake."""
 
+import time
 from functools import lru_cache
 from typing import Protocol, TypeVar
 
@@ -7,6 +8,7 @@ import anthropic
 from pydantic import BaseModel
 
 from copilot.config import get_settings
+from copilot.observability.telemetry import record_llm_call, tracer
 
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
@@ -44,16 +46,19 @@ class ClaudeLLM:
     def complete(
         self, system: str, messages: list[dict], effort: str, max_tokens: int = 16000
     ) -> str:
-        response = self.client.beta.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-            output_config={"effort": effort},
-            # Safety-classifier declines are retried server-side on a recommended model.
-            betas=[FALLBACK_BETA],
-            fallbacks="default",
-        )
+        with tracer.start_as_current_span("llm.complete") as span:
+            start = time.perf_counter()
+            response = self.client.beta.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                output_config={"effort": effort},
+                # Safety-classifier declines are retried server-side on a recommended model.
+                betas=[FALLBACK_BETA],
+                fallbacks="default",
+            )
+            record_llm_call(span, self.model, "complete", response, time.perf_counter() - start)
         _raise_on_refusal(response)
         return "".join(b.text for b in response.content if b.type == "text").strip()
 
@@ -66,16 +71,20 @@ class ClaudeLLM:
         max_tokens: int = 16000,
     ) -> T:
         """Structured output validated against `schema` (JSON-schema constrained decoding)."""
-        response = self.client.beta.messages.parse(
-            model=self.model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-            output_format=schema,
-            output_config={"effort": effort},
-            betas=[FALLBACK_BETA],
-            fallbacks="default",
-        )
+        with tracer.start_as_current_span("llm.parse") as span:
+            start = time.perf_counter()
+            response = self.client.beta.messages.parse(
+                model=self.model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                output_format=schema,
+                output_config={"effort": effort},
+                betas=[FALLBACK_BETA],
+                fallbacks="default",
+            )
+            span.set_attribute("copilot.schema", schema.__name__)
+            record_llm_call(span, self.model, "parse", response, time.perf_counter() - start)
         _raise_on_refusal(response)
         if response.parsed_output is None:
             raise LLMOutputError(f"no parsable output (stop_reason={response.stop_reason})")

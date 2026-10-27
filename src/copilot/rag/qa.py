@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from copilot.config import get_settings
 from copilot.guardrails.checks import DISCLAIMER, SCOPE_REFUSALS, check_scope, strip_uncited_dosing
+from copilot.observability.telemetry import ANSWERS, GUARDRAIL_FLAGS, tracer
 from copilot.rag.llm import LLM, LLMRefusal, get_llm
 from copilot.rag.retriever import Retriever, get_retriever
 from copilot.rag.vector_store import SearchHit
@@ -170,6 +171,23 @@ class CitedQA:
         return rewritten or question
 
     def answer(self, question: str, standalone_question: str | None = None) -> Answer:
+        with tracer.start_as_current_span("qa.answer") as span:
+            result = self._answer(question, standalone_question)
+            outcome = result.refusal_reason or "grounded"
+            ANSWERS.labels(outcome).inc()
+            for flag in result.guardrail_flags:
+                GUARDRAIL_FLAGS.labels(flag.split(":")[0]).inc()
+            span.set_attributes(
+                {
+                    "qa.outcome": outcome,
+                    "qa.citations": len(result.citations),
+                    "qa.invalid_citations": len(result.invalid_citation_ids),
+                    "qa.guardrail_flags": result.guardrail_flags,
+                }
+            )
+            return result
+
+    def _answer(self, question: str, standalone_question: str | None) -> Answer:
         query = standalone_question or question
 
         def refuse(reason: RefusalReason, message: str | None = None, **extra) -> Answer:

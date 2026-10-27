@@ -14,6 +14,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from copilot.config import get_settings
+from copilot.observability.telemetry import traced_node
 from copilot.rag.qa import Answer, CitedQA, get_qa
 
 
@@ -28,8 +29,8 @@ class ChatService:
     def __init__(self, qa: CitedQA, checkpointer: BaseCheckpointSaver):
         self.qa = qa
         graph = StateGraph(ChatState)
-        graph.add_node("rewrite", self._rewrite)
-        graph.add_node("answer", self._answer)
+        graph.add_node("rewrite", traced_node("chat", "rewrite", self._rewrite))
+        graph.add_node("answer", traced_node("chat", "answer", self._answer))
         graph.add_edge(START, "rewrite")
         graph.add_edge("rewrite", "answer")
         graph.add_edge("answer", END)

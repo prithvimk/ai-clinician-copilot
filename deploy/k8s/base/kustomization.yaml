@@ -1,0 +1,29 @@
+# Base manifests. Prerequisites in the cluster:
+#   - ingress-nginx, cert-manager (TLS), metrics-server (HPA)
+#   - CloudNativePG operator (Postgres with WAL archiving / PITR)
+#   - Prometheus Operator (ServiceMonitor) and an OTLP collector in the `observability` namespace
+# Secrets are created out of band (External Secrets / sealed secrets / kubectl), never committed:
+#   copilot-secrets: ANTHROPIC_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+#   backup-s3:       ACCESS_KEY_ID, SECRET_ACCESS_KEY (Postgres WAL/base backups)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: clinician-copilot
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: clinician-copilot
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - api.yaml
+  - ui.yaml
+  - qdrant.yaml
+  - postgres.yaml
+  - jobs.yaml
+  - networkpolicies.yaml
+  - ingress.yaml
+  - monitoring.yaml
+images:
+  - name: clinician-copilot
+    newName: ghcr.io/prithvimk/clinician-copilot
+    newTag: "0.1.0"

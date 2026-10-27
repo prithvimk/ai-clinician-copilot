@@ -1,10 +1,13 @@
 """HTTP API. Run with: uv run uvicorn copilot.api.app:app"""
 
+import logging
+import time
 from typing import Annotated
 from uuid import uuid4
 
 import anthropic
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
 from copilot.agents.patient import PATIENTS_DIR, Patient
@@ -15,18 +18,72 @@ from copilot.agents.service import (
     get_analysis_service,
 )
 from copilot.agents.workflow import ReviewDecision
-from copilot.feedback import Feedback, FeedbackIn, FeedbackStore, get_feedback_store
+from copilot.config import get_settings
+from copilot.feedback import (
+    Feedback,
+    FeedbackIn,
+    FeedbackStore,
+    PostgresFeedbackStore,
+    get_feedback_store,
+)
+from copilot.observability.telemetry import (
+    HTTP_LATENCY,
+    HTTP_REQUESTS,
+    request_id_var,
+    setup_logging,
+    setup_tracing,
+)
 from copilot.rag.chat import ChatService, get_chat_service
 from copilot.rag.qa import Answer
 
 Service = Annotated[ChatService, Depends(get_chat_service)]
 Analysis = Annotated[AnalysisService, Depends(get_analysis_service)]
-Store = Annotated[FeedbackStore, Depends(get_feedback_store)]
+Store = Annotated[FeedbackStore | PostgresFeedbackStore, Depends(get_feedback_store)]
+
+log = logging.getLogger("copilot.api")
+settings = get_settings()
+setup_logging(settings)
 
 app = FastAPI(
     title="AI Clinician Copilot",
     description="Guideline-grounded clinical Q&A and patient analysis. Decision support only.",
 )
+if setup_tracing(settings):
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="health,ready,metrics")
+
+
+@app.middleware("http")
+async def observe(request: Request, call_next):
+    """Request id (propagated via X-Request-ID), latency/status metrics and an access log."""
+    request_id = request.headers.get("x-request-id") or uuid4().hex
+    token = request_id_var.set(request_id)
+    start = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        seconds = time.perf_counter() - start
+        route = getattr(request.scope.get("route"), "path", "unmatched")  # template, not raw path
+        if route not in ("/metrics", "/health", "/ready"):
+            HTTP_REQUESTS.labels(request.method, route, str(status)).inc()
+            HTTP_LATENCY.labels(request.method, route).observe(seconds)
+            log.info(
+                "request",
+                extra={
+                    "fields": {
+                        "method": request.method,
+                        "route": route,
+                        "status": status,
+                        "duration_ms": round(seconds * 1000, 1),
+                    }
+                },
+            )
+        request_id_var.reset(token)
 
 
 class ChatRequest(BaseModel):
@@ -40,7 +97,28 @@ class ChatResponse(Answer):
 
 @app.get("/health")
 def health() -> dict:
+    """Liveness: the process is serving."""
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict:
+    """Readiness: models loaded and the vector store reachable (first call warms models)."""
+    from copilot.rag.retriever import get_retriever
+
+    try:
+        store = get_retriever().store
+        if not store.client.collection_exists(store.collection):
+            raise RuntimeError(f"collection {store.collection!r} missing")
+    except Exception as e:
+        log.warning("not ready: %s", e)
+        raise HTTPException(503, f"not ready: {type(e).__name__}") from None
+    return {"status": "ready"}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/chat")
