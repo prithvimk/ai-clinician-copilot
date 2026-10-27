@@ -13,6 +13,7 @@ import json
 import logging
 import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
@@ -185,12 +186,29 @@ def _log(p: Pseudonymizer) -> None:
         log.info("pii redaction: %d value(s) pseudonymised", len(p.placeholders))
 
 
+def spacy_model_installed(name: str) -> bool:
+    try:
+        import spacy.util
+    except ImportError:
+        return False
+    return spacy.util.is_package(name) or Path(name).is_dir()
+
+
 @lru_cache
 def get_detector() -> Detector:
     model = get_settings().pii_spacy_model
-    if model:
+    # Check first: given a missing model, Presidio pip-installs it at runtime (and exits the
+    # process where pip is absent). Models belong in the image, never downloaded per request.
+    if model and spacy_model_installed(model):
         try:
             return PresidioDetector(model)
         except (ImportError, OSError) as e:
             log.warning("Presidio unavailable (%s); using regex PII recognizers only", e)
+    elif model:
+        log.warning(
+            "spaCy model %r not installed; using regex PII recognizers only "
+            "(install with: python -m spacy download %s)",
+            model,
+            model,
+        )
     return RegexDetector()

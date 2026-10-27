@@ -143,3 +143,24 @@ def test_qa_applies_scope_and_dosing_guardrails():
     assert answer.answer == "Reduce metformin to 500 mg twice daily [1]."
     assert answer.guardrail_flags == ["uncited_dosing_removed:1"]
     assert "Decision support only" in answer.disclaimer
+
+
+def test_missing_spacy_model_falls_back_to_regex_without_downloading(monkeypatch):
+    """Presidio would try to pip-download the model at runtime (and SystemExit without pip)."""
+    import spacy.cli
+
+    from copilot.config import Settings
+    from copilot.guardrails import pii
+
+    def no_download(*args, **kwargs):
+        raise AssertionError("must not download models at runtime")
+
+    monkeypatch.setattr(spacy.cli, "download", no_download)
+    monkeypatch.setattr(
+        pii, "get_settings", lambda: Settings(_env_file=None, pii_spacy_model="en_core_web_lg")
+    )
+    pii.get_detector.cache_clear()
+    try:
+        assert isinstance(pii.get_detector(), RegexDetector)
+    finally:
+        pii.get_detector.cache_clear()
