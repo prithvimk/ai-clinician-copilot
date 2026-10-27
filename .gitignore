@@ -24,3 +24,6 @@ storage/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Evaluation outputs (scorecards are regenerated per run)
+eval/reports/

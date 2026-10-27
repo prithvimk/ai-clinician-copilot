@@ -1,0 +1,113 @@
+# Patient-analysis scenarios.
+#
+# patient_id refers to data/patients/*.json; `patient` gives an inline synthetic record.
+# expected_findings: finding ids (and optionally severities) the rule engine must produce;
+#   any other finding counts against precision.
+# proposed_changes: medication changes a draft might propose, with the safety/interaction
+#   rules that must fire (empty list = must pass cleanly).
+# The deterministic part runs without an LLM; with --llm the full workflow also runs
+# (auto-approve) and must finish with every critical/high finding addressed and no
+# unresolved issues.
+
+- id: P001-dm-ckd-htn
+  patient_id: P001
+  expected_findings:
+    hba1c-above-target: high
+    bp-above-target: high
+    egfr-reduced: high
+    albuminuria: high
+    med-metformin_egfr-metformin: high
+    ldl-raised: moderate
+    med-sulfonylurea_ckd-gliclazide: moderate
+    potassium-raised: low
+  proposed_changes:
+    - {drug: Metformin, change: continue, daily_dose: 2000 mg, expect: [metformin_egfr]}
+    - {drug: Metformin, change: reduce, daily_dose: 1000 mg, expect: []}
+    - {drug: Ramipril, change: start, expect: [allergy]}
+    - {drug: Losartan, change: start, expect: [allergy_cross_reactivity]}
+    - {drug: Empagliflozin, change: start, daily_dose: 10 mg, expect: []}
+  interactions:
+    - {drugs: [Losartan, Spironolactone], expect_severity: high}
+
+- id: P002-htn-not-at-target
+  patient_id: P002
+  expected_findings:
+    bp-above-target: high
+    hba1c-prediabetes: low
+    cholesterol-raised: low
+  proposed_changes:
+    - {drug: Indapamide, change: start, daily_dose: 2.5 mg, expect: []}
+
+- id: P003-new-diabetes-range
+  patient_id: P003
+  expected_findings:
+    hba1c-diabetes-range: high
+  proposed_changes:
+    - {drug: Amoxicillin, change: start, expect: [allergy]}  # penicillin allergy
+    - {drug: Metformin, change: start, daily_dose: 500 mg, expect: []}
+
+- id: S04-advanced-ckd-on-metformin
+  patient:
+    patient_id: S04
+    synthetic: true
+    problems: [Type 2 diabetes mellitus, Chronic kidney disease stage 4]
+    medications: [{name: Metformin, dose: 500 mg, frequency: twice daily}]
+    labs:
+      - {date: 2026-03-01, test: eGFR, value: 31, unit: ml/min/1.73m2}
+      - {date: 2026-09-01, test: eGFR, value: 24, unit: ml/min/1.73m2}
+      - {date: 2026-09-01, test: HbA1c, value: 7.4, unit: "%"}
+  expected_findings:
+    egfr-reduced: high
+    med-metformin_egfr-metformin: critical
+    hba1c-above-target: moderate
+  proposed_changes:
+    - {drug: Metformin, change: reduce, daily_dose: 500 mg, expect: [metformin_egfr]}
+    - {drug: Metformin, change: stop, expect: []}
+    - {drug: Dapagliflozin, change: start, daily_dose: 10 mg, expect: []}
+
+- id: S05-ace-angioedema-hyperkalaemia
+  patient:
+    patient_id: S05
+    synthetic: true
+    problems: [Hypertension, Chronic kidney disease stage 3a]
+    medications: [{name: Amlodipine, dose: 10 mg, frequency: once daily}]
+    allergies: [{substance: Enalapril, reaction: Angioedema}]
+    vitals: [{date: 2026-09-10, bp_systolic: 148, bp_diastolic: 88}]
+    labs:
+      - {date: 2026-09-10, test: eGFR, value: 52, unit: ml/min/1.73m2}
+      - {date: 2026-09-10, test: Potassium, value: 5.8, unit: mmol/L}
+  expected_findings:
+    bp-above-target: high
+    egfr-reduced: low
+    potassium-raised: high
+  proposed_changes:
+    - {drug: Candesartan, change: start, expect: [allergy_cross_reactivity, raas_hyperkalaemia]}
+    - {drug: Perindopril, change: start, expect: [allergy, raas_hyperkalaemia]}
+    - {drug: Indapamide, change: start, expect: []}
+
+- id: S06-well-controlled
+  patient:
+    patient_id: S06
+    synthetic: true
+    problems: [Type 2 diabetes mellitus]
+    medications: [{name: Metformin, dose: 1000 mg, frequency: twice daily}]
+    vitals: [{date: 2026-09-01, bp_systolic: 124, bp_diastolic: 76}]
+    labs:
+      - {date: 2026-09-01, test: HbA1c, value: 6.8, unit: "%"}
+      - {date: 2026-09-01, test: eGFR, value: 88, unit: ml/min/1.73m2}
+      - {date: 2026-09-01, test: LDL cholesterol, value: 1.9, unit: mmol/L}
+  expected_findings: {}
+  proposed_changes:
+    - {drug: Metformin, change: continue, daily_dose: 2000 mg, expect: []}
+
+- id: S07-severe-hypertension
+  patient:
+    patient_id: S07
+    synthetic: true
+    problems: [Hypertension]
+    vitals: [{date: 2026-10-01, bp_systolic: 186, bp_diastolic: 112}]
+  expected_findings:
+    bp-severe: critical
+  interactions:
+    - {drugs: [Ramipril, Losartan], expect_severity: high}
+    - {drugs: [Amlodipine, Indapamide], expect_severity: null}

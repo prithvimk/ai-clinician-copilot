@@ -1,0 +1,7 @@
+{
+ "agent.findings_precision": 1.0,
+ "agent.findings_recall": 1.0,
+ "agent.interaction_accuracy": 1.0,
+ "agent.safety_rule_accuracy": 1.0,
+ "agent.severity_accuracy": 1.0
+}
